@@ -9,7 +9,7 @@ import transformations as tf
 import PIL
 from scipy.spatial.transform import Rotation
 #TODO 1.从grcn_generate.py中找到合适的函数导入，以使用训练好的GRCN网络完成抓取流程
-from grcn_generate import 
+from grcn_generate import evaluate_network
 
 
 
@@ -366,7 +366,7 @@ reflect_flag = np.array([[1., 0, 0.],[0., 1., 0.],[0., 0, -1.]])
 target_orientation_init = np.array([[0., -1, 0.],[-1., -0., 0.],[0., 0, 1.]])
 
 # TODO 2.使用grcn获取预测位姿和真实位姿
-predict_pose, gt_center = 
+predict_pose, gt_center = evaluate_network()
 
 # 初始化物体真实位姿和预测位姿
 gt_postion, gt_orientation = pose_gt_init(model)
