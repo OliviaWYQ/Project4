@@ -33,10 +33,10 @@ class GenerativeResnet(GraspModel):
         self.conv6 = nn.Conv2d(channel_size, channel_size, kernel_size=9, stride=1, padding=4)
 
         # TODO 5: 实现4个抓取相关输出（位置、cos、sin、宽度），均为 2x2 的卷积
-        self.pos_output = nn.Conv2d(channel_size, output_channels, kernel_size=2)
-        self.cos_output = nn.Conv2d(channel_size, output_channels, kernel_size=2)
-        self.sin_output = nn.Conv2d(channel_size, output_channels, kernel_size=2)
-        self.width_output = nn.Conv2d(channel_size, output_channels, kernel_size=2)
+        self.pos_output = nn.Conv2d(channel_size, output_channels, kernel_size=2, padding='same')
+        self.cos_output = nn.Conv2d(channel_size, output_channels, kernel_size=2, padding='same')
+        self.sin_output = nn.Conv2d(channel_size, output_channels, kernel_size=2, padding='same')
+        self.width_output = nn.Conv2d(channel_size, output_channels, kernel_size=2, padding='same')
 
         self.dropout = dropout
         self.dropout_pos = nn.Dropout(p=prob)

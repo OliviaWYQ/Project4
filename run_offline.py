@@ -47,14 +47,16 @@ if __name__ == '__main__':
     pic = Image.open(args.depth_path, 'r')
     depth = np.expand_dims(np.array(pic), axis=2)
 
+    # Get the compute device
+    device = get_device(args.force_cpu)
+
     # Load Network
     logging.info('Loading model...')
     # net = torch.load(args.network)  # NOTE: CHANGE TO THIS IF YOU USE OLDER VESION TORCH
-    net = torch.load(args.network, weights_only=False)
+    net = torch.load(args.network, map_location=device, weights_only=False)
+    net = net.to(device)
+    net.eval()
     logging.info('Done')
-
-    # Get the compute device
-    device = get_device(args.force_cpu)
 
     img_data = CameraData(include_depth=args.use_depth, include_rgb=args.use_rgb)
 

@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import tensorboardX
 import torch
+import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data
 from torchsummary import summary
@@ -21,12 +22,40 @@ from utils.dataset_processing import evaluation
 from utils.visualisation.gridshow import gridshow
 
 
+def compute_loss(net, xc, yc):
+    y_pos, y_cos, y_sin, y_width = yc
+    pos_pred, cos_pred, sin_pred, width_pred = net(xc)
+
+    p_loss = F.smooth_l1_loss(pos_pred, y_pos)
+    cos_loss = F.smooth_l1_loss(cos_pred, y_cos)
+    sin_loss = F.smooth_l1_loss(sin_pred, y_sin)
+    width_loss = F.smooth_l1_loss(width_pred, y_width)
+
+    return {
+        'loss': p_loss + cos_loss + sin_loss + width_loss,
+        'losses': {
+            'p_loss': p_loss,
+            'cos_loss': cos_loss,
+            'sin_loss': sin_loss,
+            'width_loss': width_loss
+        },
+        'pred': {
+            'pos': pos_pred,
+            'cos': cos_pred,
+            'sin': sin_pred,
+            'width': width_pred
+        }
+    }
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Train network')
 
     # Network
     parser.add_argument('--network', type=str, default='grconvnet',
                         help='Network name in inference/models')
+    parser.add_argument('--resume-network', type=str, default='',
+                        help='Path to a saved network checkpoint to continue training from')
     parser.add_argument('--input-size', type=int, default=224,
                         help='Input image size for the network')
     parser.add_argument('--use-depth', type=int, default=1,
@@ -61,6 +90,8 @@ def parse_args():
                         help='Batch size')
     parser.add_argument('--epochs', type=int, default=50,
                         help='Training epochs')
+    parser.add_argument('--start-epoch', type=int, default=0,
+                        help='Epoch number to start from when resuming training')
     parser.add_argument('--batches-per-epoch', type=int, default=1000,
                         help='Batches per Epoch')
     parser.add_argument('--optim', type=str, default='adam',
@@ -108,7 +139,7 @@ def validate(net, device, val_data, iou_threshold):
         for x, y, didx, rot, zoom_factor in val_data:
             xc = x.to(device)
             yc = [yy.to(device) for yy in y]
-            lossd = net.compute_loss(xc, yc)
+            lossd = compute_loss(net, xc, yc)
 
             loss = lossd['loss']
 
@@ -167,7 +198,7 @@ def train(epoch, net, device, train_data, optimizer, batches_per_epoch, vis=Fals
 
             xc = x.to(device)
             yc = [yy.to(device) for yy in y]
-            lossd = net.compute_loss(xc, yc)
+            lossd = compute_loss(net, xc, yc)
 
             loss = lossd['loss']
 
@@ -286,15 +317,22 @@ def run():
     # Load the network
     logging.info('Loading Network...')
     input_channels = 1 * args.use_depth + 3 * args.use_rgb
-    network = get_network(args.network)
-    net = network(
-        input_channels=input_channels,
-        dropout=args.use_dropout,
-        prob=args.dropout_prob,
-        channel_size=args.channel_size
-    )
+    if args.resume_network:
+        logging.info('Resuming from checkpoint: %s', args.resume_network)
+        net = torch.load(args.resume_network, map_location=device, weights_only=False)
+    else:
+        network = get_network(args.network)
+        net = network(
+            input_channels=input_channels,
+            dropout=args.use_dropout,
+            prob=args.dropout_prob,
+            channel_size=args.channel_size
+        )
 
     net = net.to(device)
+    if device.type == 'cuda' and torch.cuda.device_count() > 1:
+        logging.info('Using %d GPUs with DataParallel.', torch.cuda.device_count())
+        net = torch.nn.DataParallel(net)
     logging.info('Done')
 
     if args.optim.lower() == 'adam':
@@ -305,15 +343,16 @@ def run():
         raise NotImplementedError('Optimizer {} is not implemented'.format(args.optim))
 
     # Print model architecture.
-    summary(net, (input_channels, args.input_size, args.input_size))
+    net_for_summary = net.module if isinstance(net, torch.nn.DataParallel) else net
+    summary(net_for_summary, (input_channels, args.input_size, args.input_size))
     f = open(os.path.join(save_folder, 'arch.txt'), 'w')
     sys.stdout = f
-    summary(net, (input_channels, args.input_size, args.input_size))
+    summary(net_for_summary, (input_channels, args.input_size, args.input_size))
     sys.stdout = sys.__stdout__
     f.close()
 
     best_iou = 0.0
-    for epoch in range(args.epochs):
+    for epoch in range(args.start_epoch, args.epochs):
         logging.info('Beginning Epoch {:02d}'.format(epoch))
         train_results = train(epoch, net, device, train_data, optimizer, args.batches_per_epoch, vis=args.vis)
 
@@ -337,7 +376,8 @@ def run():
         # Save best performing network
         iou = test_results['correct'] / (test_results['correct'] + test_results['failed'])
         if iou > best_iou or epoch == 0 or (epoch % 10) == 0:
-            torch.save(net, os.path.join(save_folder, 'epoch_%02d_iou_%0.2f' % (epoch, iou)))
+            net_to_save = net.module if isinstance(net, torch.nn.DataParallel) else net
+            torch.save(net_to_save, os.path.join(save_folder, 'epoch_%02d_iou_%0.2f' % (epoch, iou)))
             best_iou = iou
 
 

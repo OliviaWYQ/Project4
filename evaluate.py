@@ -110,7 +110,8 @@ if __name__ == '__main__':
 
         # Load Network
         # net = torch.load(network)  # NOTE: CHANGE TO THIS IF YOU USE OLDER VERSION TORCH
-        net = torch.load(network, weights_only=False) 
+        net = torch.load(network, map_location=device, weights_only=False)
+        net = net.to(device)
 
         results = {'correct': 0, 'failed': 0}
 

@@ -18,7 +18,7 @@ import math
 
 logging.basicConfig(level=logging.INFO)
 
-def get_random_cornell_pair(base_dir="cornell_dataset"):
+def get_random_cornell_pair(base_dir="cornell_dataset/cornell_grasp"):
     """随机选择一对 RGB 和 Depth 文件路径（从 01~09 随机选一个目录，再随机选一个文件对）"""
     # 1. 随机选择一个子目录（01~09）
     subdirs = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d)) and d.isdigit() and 1 <= int(d) <= 9]
@@ -56,9 +56,9 @@ def parse_args():
 
     except FileNotFoundError as e:
         print(f"Warning: {e}. Using fallback paths.")
-        default_rgb = "cornell_dataset/01/pcd0100r.png"
-        default_depth = "cornell_dataset/01/pcd0100d.tiff"
-        default_cpos = "cornell_dataset/01/pcd0100cpos.txt"
+        default_rgb = "cornell_dataset/cornell_grasp/01/pcd0100r.png"
+        default_depth = "cornell_dataset/cornell_grasp/01/pcd0100d.tiff"
+        default_cpos = "cornell_dataset/cornell_grasp/01/pcd0100cpos.txt"
 
     parser = argparse.ArgumentParser(description='Evaluate network')
     parser.add_argument('--network', type=str,
@@ -138,14 +138,16 @@ def evaluate_network():
     pic = Image.open(args.depth_path, 'r')
     depth = np.expand_dims(np.array(pic), axis=2)
 
+    # Get the compute device
+    device = get_device(args.force_cpu)
+
     # Load Network
     logging.info('Loading model...')
     # net = torch.load(args.network)  # NOTE: CHANGE TO THIS IF YOU USE OLDER VESION TORCH
-    net = torch.load(args.network, weights_only=False)
+    net = torch.load(args.network, map_location=device, weights_only=False)
+    net = net.to(device)
+    net.eval()
     logging.info('Done')
-
-    # Get the compute device
-    device = get_device(args.force_cpu)
 
     img_data = CameraData(include_depth=args.use_depth, include_rgb=args.use_rgb)
 
@@ -187,4 +189,3 @@ def evaluate_network():
             fig.savefig('img_result.pdf')
 
     return pose, average_center
-
